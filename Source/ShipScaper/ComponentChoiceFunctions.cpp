@@ -30,6 +30,7 @@ TMap<FTileCoordinate, int32> UComponentChoiceFunctions::createComponentMapping(T
 	while (unpicked.Num() > 0) {
 		
 		FTileCoordinate centre = unpicked.Array()[FMath::RandRange(0, unpicked.Num()-1)];
+
 		for (auto& comp : possibleComponents) {
 			bool fit = true;
 			for (auto& hex : comp) {
@@ -47,28 +48,79 @@ TMap<FTileCoordinate, int32> UComponentChoiceFunctions::createComponentMapping(T
 				break;
 			}
 		}
-		/*
-		FTileCoordinate centre = unpicked.Array()[FMath::RandRange(0, unpicked.Num()-1)];
-		
-		mapping.Add(centre, counter);
-		
-		int c = 1;
-		while (unpicked.Contains(centre + FTileCoordinate(0, c))) {
-			mapping.Add(centre + FTileCoordinate(0, c), counter);
-			unpicked.Remove(centre + FTileCoordinate(0, c));
-			c++;
-		}
-		c = -1;
-		while (unpicked.Contains(centre + FTileCoordinate(0, c))) {
-			mapping.Add(centre + FTileCoordinate(0, c), counter);
-			unpicked.Remove(centre + FTileCoordinate(0, c));
-			c--;
-		}
-		
-		unpicked.Remove(centre);
-		counter++;
-		*/
 	}
 	
 	return mapping;
+}
+
+TMap<FTileCoordinate, TSubclassOf<AActor>> UComponentChoiceFunctions::createPartMapping(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data) {
+	TSet<FTileCoordinate> unpicked(coords);
+	TMap<FTileCoordinate, TSubclassOf<AActor>> chosenParts;
+
+	while (unpicked.Num() > 0) {
+
+		FTileCoordinate centre = unpicked.Array()[FMath::RandRange(0, unpicked.Num() - 1)];
+
+		for (int i = 0; i < parts.Num(); i++) {
+			bool fit = true;
+
+			// Will fill this area
+			for (auto& hex : data[i].FillSet) {
+				if (!unpicked.Contains(centre + hex)) {
+					fit = false;
+					break;
+				}
+			}
+			if (!fit)
+				continue;
+
+			// Should be tiles in this area
+			for (auto& hex : data[i].RequiredSet) {
+				if (!coords.Contains(centre + hex)) {
+					fit = false;
+					break;
+				}
+			}
+			if (!fit)
+				continue;
+
+			// Shouldn't be tiles here
+			for (auto& hex : data[i].BlockedSet) {
+				if (coords.Contains(centre + hex)) {
+					fit = false;
+					break;
+				}
+			}
+			if (!fit)
+				continue;
+
+			// Fill tiles and add part
+			for (auto& hex : data[i].FillSet) {
+				unpicked.Remove(centre + hex);
+			}
+			chosenParts.Add(centre, parts[i]);
+			break;
+		}
+	}
+
+	return chosenParts;
+}
+
+FTileCoordinate UComponentChoiceFunctions::toHexCoordinate(FVector coords) {
+	float Xmult = 173.2;
+	float Ymult = 200;
+
+	int x = round(coords.X / Xmult);
+	int y = round( (coords.Y+x*Ymult/2.0) / Ymult);
+	return FTileCoordinate(x, y);
+}
+
+FVector UComponentChoiceFunctions::fromHexCoordinate(FTileCoordinate coords) {
+	float Xmult = 173.2;
+	float Ymult = 200;
+
+	float x = coords.x * Xmult;
+	float y = coords.y * Ymult - coords.x * Ymult / 2.0;
+
+	return FVector(x, y, 0);
 }

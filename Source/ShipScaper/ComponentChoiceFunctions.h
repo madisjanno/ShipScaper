@@ -12,9 +12,9 @@ struct FTileCoordinate
 {
     GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
     int32 x;
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
     int32 y;
 
     FTileCoordinate() : x(0), y(0) {}
@@ -39,6 +39,19 @@ struct FTileCoordinate
     }
 };
 
+USTRUCT(BlueprintType)
+struct FPartData
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    TSet<FTileCoordinate> RequiredSet;
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    TSet<FTileCoordinate> BlockedSet;
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    TSet<FTileCoordinate> FillSet;
+};
+
 /**
  * 
  */
@@ -49,4 +62,13 @@ class SHIPSCAPER_API UComponentChoiceFunctions : public UBlueprintFunctionLibrar
 
         UFUNCTION(BlueprintPure, Category = "ProcGen")
         static TMap<FTileCoordinate, int32> createComponentMapping(TArray<FTileCoordinate> coords);
+
+        UFUNCTION(BlueprintCallable, Category = "ProcGen")
+        static TMap<FTileCoordinate, TSubclassOf<AActor>> createPartMapping(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data);
+
+        UFUNCTION(BlueprintPure, Category = "ProcGen")
+        static FTileCoordinate toHexCoordinate(FVector coords);
+
+        UFUNCTION(BlueprintPure, Category = "ProcGen")
+        static FVector fromHexCoordinate(FTileCoordinate coords);
 };
