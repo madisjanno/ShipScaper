@@ -3,92 +3,90 @@
 
 #include "ComponentChoiceFunctions.h"
 
-TMap<FTileCoordinate, int32> UComponentChoiceFunctions::createComponentMapping(TArray<FTileCoordinate> coords) {
-	TSet<FTileCoordinate> unpicked(coords);
-	int32 counter = 0;
-	TMap<FTileCoordinate, int32> mapping;
+FPartData mirrorPart(FPartData part) {
+	FPartData mpart = part;
 
-
-	TArray<TSet<FTileCoordinate>> possibleComponents;
-	
-	TSet<FTileCoordinate> comp1;
-	comp1.Add(FTileCoordinate(0, 0));
-	comp1.Add(FTileCoordinate(1, 0));
-	comp1.Add(FTileCoordinate(-1, 0));
-	possibleComponents.Push(comp1);
-
-	TSet<FTileCoordinate> comp2;
-	comp2.Add(FTileCoordinate(0, 0));
-	comp2.Add(FTileCoordinate(0, -1));
-	comp2.Add(FTileCoordinate(0, 1));
-	possibleComponents.Push(comp2);
-	
-	TSet<FTileCoordinate> comp3;
-	comp3.Add(FTileCoordinate(0, 0));
-	possibleComponents.Push(comp3);
-	
-	while (unpicked.Num() > 0) {
-		
-		FTileCoordinate centre = unpicked.Array()[FMath::RandRange(0, unpicked.Num()-1)];
-
-		for (auto& comp : possibleComponents) {
-			bool fit = true;
-			for (auto& hex : comp) {
-				if (!unpicked.Contains(centre + hex)) {
-					fit = false;
-					break;
-				}
-			}
-			if (fit) {
-				for (auto& hex : comp) {
-					unpicked.Remove(centre + hex);
-					mapping.Add(centre + hex, counter);
-				}
-				counter++;
-				break;
-			}
-		}
+	mpart.BlockedSet.Empty();
+	for (FTileCoordinate& c : part.BlockedSet) {
+		mpart.BlockedSet.Add(c.mirrorYaxis());
 	}
-	
-	return mapping;
+
+	mpart.FillSet.Empty();
+	for (FTileCoordinate& c : part.FillSet) {
+		mpart.FillSet.Add(c.mirrorYaxis());
+	}
+
+	mpart.RequiredSet.Empty();
+	for (FTileCoordinate& c : part.RequiredSet) {
+		mpart.RequiredSet.Add(c.mirrorYaxis());
+	}
+
+	return mpart;
 }
 
-TMap<FTileCoordinate, TSubclassOf<AActor>> UComponentChoiceFunctions::createPartMapping(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data) {
-	TSet<FTileCoordinate> unpicked(coords);
-	TMap<FTileCoordinate, TSubclassOf<AActor>> chosenParts;
+bool checkPartFit(FPartData part, FTileCoordinate centre, TSet<FTileCoordinate>& coords, TSet<FTileCoordinate>& unpicked) {
+	for (auto& hex : part.FillSet) {
+		if (!unpicked.Contains(centre + hex))
+			return false;
+	}
 
-	while (unpicked.Num() > 0) {
+	for (auto& hex : part.RequiredSet) {
+		if (!coords.Contains(centre + hex))
+			return false;
+	}
 
-		FTileCoordinate centre = unpicked.Array()[FMath::RandRange(0, unpicked.Num() - 1)];
+	for (auto& hex : part.BlockedSet) {
+		if (coords.Contains(centre + hex))
+			return false;
+	}
 
-		for (int i = 0; i < parts.Num(); i++) {
+	return true;
+}
+
+void runPass(TArray<FMappedPart>& chosenParts, TSet<FTileCoordinate>& coords, TArray<TSubclassOf<AActor>>& parts, TArray<FPartData>& data, TSet<FTileCoordinate>& unpicked, 
+			TSet<FTileCoordinate>& unchecked, TArray<int>& passParts, bool enforceMirror) {
+	int N = parts.Num() / 2; // mirrored parts
+	// Randomly checks all given locations
+	while (unchecked.Num() > 0) {
+		FTileCoordinate centre = unchecked.Array()[FMath::RandRange(0, unchecked.Num() - 1)];
+
+		// Tries to fit part into location
+		for (int i : passParts) {
+			if (!checkPartFit(data[i], centre, coords, unpicked))
+				continue;
+
+			// Mirror check
+			if (enforceMirror) {
+				int j;
+				if (i >= N)
+					j = i - N;
+				else
+					j = i + N;
+
+				if (!checkPartFit(data[j], centre.mirrorYaxis(), coords, unpicked))
+					continue;
+			}
+
 			bool fit = true;
-
-			// Will fill this area
-			for (auto& hex : data[i].FillSet) {
-				if (!unpicked.Contains(centre + hex)) {
-					fit = false;
-					break;
-				}
-			}
-			if (!fit)
-				continue;
-
-			// Should be tiles in this area
-			for (auto& hex : data[i].RequiredSet) {
-				if (!coords.Contains(centre + hex)) {
-					fit = false;
-					break;
-				}
-			}
-			if (!fit)
-				continue;
-
-			// Shouldn't be tiles here
-			for (auto& hex : data[i].BlockedSet) {
-				if (coords.Contains(centre + hex)) {
-					fit = false;
-					break;
+			if (enforceMirror) {
+				for (auto& hex : data[i].FillSet) {
+					// Check symmetry on centerline
+					if (centre.x == 0) {
+						if (!data[i].FillSet.Contains(hex.mirrorYaxis())) {
+							fit = false;
+							break;
+						}
+					}
+					else { // Check no flow over centerline
+						if (centre.x > 0 != (centre + hex).x > 0) {
+							fit = false;
+							break;
+						}
+						if (centre.x < 0 != (centre + hex).x < 0) {
+							fit = false;
+							break;
+						}
+					}
 				}
 			}
 			if (!fit)
@@ -97,12 +95,96 @@ TMap<FTileCoordinate, TSubclassOf<AActor>> UComponentChoiceFunctions::createPart
 			// Fill tiles and add part
 			for (auto& hex : data[i].FillSet) {
 				unpicked.Remove(centre + hex);
+				if (unchecked.Contains(centre + hex))
+					unchecked.Remove(centre + hex);
 			}
-			chosenParts.Add(centre, parts[i]);
+			chosenParts.Add(FMappedPart(centre, parts[i], i >= N));
+
+			// Fill symmetric tiles and add part
+			if (enforceMirror && centre.x != 0) {
+				FTileCoordinate mirrorCentre = centre.mirrorYaxis();
+
+				int j;
+				if (i >= N)
+					j = i - N;
+				else
+					j = i + N;
+
+				for (auto& hex : data[j].FillSet) {
+					unpicked.Remove(mirrorCentre + hex);
+					if (unchecked.Contains(mirrorCentre + hex))
+						unchecked.Remove(mirrorCentre + hex);
+				}
+
+				chosenParts.Add(FMappedPart(mirrorCentre, parts[j], j >= N));
+			}
+
 			break;
+		}
+
+		if (unchecked.Contains(centre))
+			unchecked.Remove(centre);
+	}
+}
+
+TArray<FMappedPart> UComponentChoiceFunctions::createPartMapping(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data) {
+	TSet<FTileCoordinate> unpicked(coords);
+	TArray<FMappedPart> chosenParts;
+
+	// Mirrors parts
+	int N = parts.Num();
+	for (int i = 0; i < N; i++) {
+		TSubclassOf<AActor> actor = parts[i];
+		parts.Add(actor);
+		data.Add(mirrorPart(data[i]));
+	}
+
+	// Creates array of indices which is easier to sort
+	TArray<int> indices;
+	for (int i = 0; i < parts.Num(); i++) {
+		indices.Add(i);
+	}
+
+	// Sorts according to priorities
+	indices.Sort([&](const int& lhs, const int& rhs) {
+		if (data[lhs].mappingPassPriority == data[rhs].mappingPassPriority)
+			return data[lhs].priority > data[rhs].priority;
+		else
+			return data[lhs].mappingPassPriority > data[rhs].mappingPassPriority;
+	});
+
+	// Creates list of passes to do
+	TArray<TArray<int>> passes;
+	int lastPass = -1;
+	for (int i: indices) {
+		if (lastPass != data[i].mappingPassPriority)
+			passes.Add(TArray<int>());
+		passes.Last().Add(i);
+	}
+	
+	TSet<FTileCoordinate> coordsSet(coords);
+
+	// Chooses only symmetric set of coords
+	TSet<FTileCoordinate> symmetric;
+	for (auto& c : coordsSet) {
+		if (coordsSet.Contains(c.mirrorYaxis())) {
+			symmetric.Add(c);
+			unpicked.Remove(c);
 		}
 	}
 
+	// Fills symmetric portion of ship
+	for (TArray<int>& passParts : passes) {
+		TSet<FTileCoordinate> unchecked(symmetric);
+		runPass(chosenParts, coordsSet, parts, data, symmetric, unchecked, passParts, true);
+	}
+
+	
+	// Fills rest of ship
+	for (TArray<int>& passParts : passes) {
+		TSet<FTileCoordinate> unchecked(unpicked);
+		runPass(chosenParts, coordsSet, parts, data, unpicked, unchecked, passParts, false);
+	}
 	return chosenParts;
 }
 

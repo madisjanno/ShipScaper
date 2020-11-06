@@ -33,6 +33,10 @@ struct FTileCoordinate
         return FTileCoordinate(x - Other.x, y - Other.y);
     }
 
+    FTileCoordinate mirrorYaxis() const {
+        return FTileCoordinate(-x, y-x);
+    }
+
     friend uint32 GetTypeHash(const FTileCoordinate& Other)
     {
         return GetTypeHash(Other.x)+GetTypeHash(Other.y);
@@ -50,6 +54,26 @@ struct FPartData
     TSet<FTileCoordinate> BlockedSet;
     UPROPERTY(BlueprintReadWrite, EditAnywhere)
     TSet<FTileCoordinate> FillSet;
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    int32 mappingPassPriority;
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    int32 priority;
+};
+
+USTRUCT(BlueprintType)
+struct FMappedPart
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    FTileCoordinate coordinate;
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    TSubclassOf<AActor> part;
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    bool mirrored;
+
+    FMappedPart() {}
+    FMappedPart(FTileCoordinate c, TSubclassOf<AActor> p, bool m) : coordinate(c), part(p), mirrored(m) {}
 };
 
 /**
@@ -60,11 +84,8 @@ class SHIPSCAPER_API UComponentChoiceFunctions : public UBlueprintFunctionLibrar
 {
     GENERATED_BODY()
 
-        UFUNCTION(BlueprintPure, Category = "ProcGen")
-        static TMap<FTileCoordinate, int32> createComponentMapping(TArray<FTileCoordinate> coords);
-
         UFUNCTION(BlueprintCallable, Category = "ProcGen")
-        static TMap<FTileCoordinate, TSubclassOf<AActor>> createPartMapping(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data);
+        static TArray<FMappedPart> createPartMapping(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data);
 
         UFUNCTION(BlueprintPure, Category = "ProcGen")
         static FTileCoordinate toHexCoordinate(FVector coords);
