@@ -76,6 +76,20 @@ struct FMappedPart
     FMappedPart(FTileCoordinate c, TSubclassOf<AActor> p, bool m) : coordinate(c), part(p), mirrored(m) {}
 };
 
+USTRUCT(BlueprintType)
+struct FPartAndTransform
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    FTransform transform;
+    UPROPERTY(BlueprintReadWrite, EditAnywhere)
+    TSubclassOf<AActor> part;
+
+    FPartAndTransform() {}
+    FPartAndTransform(FTransform t, TSubclassOf<AActor> p) : transform(t), part(p) {}
+};
+
 /**
  * 
  */
@@ -85,7 +99,7 @@ class SHIPSCAPER_API UComponentChoiceFunctions : public UBlueprintFunctionLibrar
     GENERATED_BODY()
 
         UFUNCTION(BlueprintCallable, Category = "ProcGen")
-        static TArray<FMappedPart> createPartMapping(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data);
+        static TArray<FPartAndTransform> createShip(TArray<FTileCoordinate> coords, TArray<TSubclassOf<AActor>> parts, TArray<FPartData> data);
 
         UFUNCTION(BlueprintPure, Category = "ProcGen")
         static FTileCoordinate toHexCoordinate(FVector coords);
