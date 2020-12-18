@@ -195,12 +195,14 @@ struct Chunk
 {
 	int upper = -100000;
 	int lower = 100000;
+	int attachX = 0;
 
 	TSet<int> chunkParts;
 
 	FTransform transform;
 
 	TSet<int> parents;
+	TArray<int> children;
 
 	void updateBounds(TArray<std::pair<int, FTileCoordinate>>& placedParts, TArray<std::pair<int, int>>& partSpans) {
 
@@ -242,6 +244,148 @@ void combineChunks(TArray<Chunk>& chunks, int chunkAi, int chunkBi) {
 		if (c.parents.Contains(chunkBi)) {
 			c.parents.Remove(chunkBi);
 			c.parents.Add(chunkAi);
+		}
+	}
+}
+
+void recursiveTransformChunks(int state, int chunkID, TArray<Chunk>& chunks, bool primary = true) {
+	Chunk currentchunk = chunks[chunkID];
+	
+	if (state == 0) { // root
+		int splits = FMath::RandRange(1, 3);
+		
+		if (splits == 1) {
+			int next = FMath::RandRange(1, 3);
+
+			for (int childID: currentchunk.children) {
+				recursiveTransformChunks(next, childID, chunks);
+			}
+		}
+		if (splits == 2) {
+			int skip = FMath::RandRange(0, 2);
+			for (int i = 0; i < 3; i++) {
+				if (i == skip)
+					continue;
+
+				bool prim = (i == 0);
+				if (skip == 0)
+					prim = (i == 1);
+
+				int next = 2;
+
+				if (i == 0) {
+					if (FMath::RandRange(0, 1) > 0)
+						next = 3;
+				}
+				if (i == 1) {
+					next = FMath::RandRange(1, 3);
+				}
+				if (i == 2) {
+					next = FMath::RandRange(1, 2);
+				}
+
+				for (int childID: currentchunk.children) {
+					if (!prim) {
+						Chunk copy = chunks[childID];
+						copy.parents.Empty();
+						copy.parents.Add(chunkID);
+						chunks.Add(copy);
+						childID = chunks.Num()-1;
+					}
+
+					float rot = (i-1)*50.0;
+
+					if (chunks[childID].lower > 0)
+						chunks[childID].transform.SetRotation(FQuat(FRotator(rot, 0, 0)));
+					else
+						chunks[childID].transform.SetRotation(FQuat(FRotator(-rot, 0, 0)));
+
+					recursiveTransformChunks(next, childID, chunks, prim);
+				}
+			}
+		}
+		if (splits == 3) {
+			for (int i = 0; i < 3; i++) {
+
+				int next = 2;
+				if (i == 0) {
+					if (FMath::RandRange(0, 1) > 0)
+						next = 3;
+				}
+				if (i == 1) {
+					next = FMath::RandRange(1, 3);
+				}
+				if (i == 2) {
+					next = FMath::RandRange(1, 2);
+				}
+
+				for (int childID: currentchunk.children) {
+					if (i != 0) {
+						Chunk copy = chunks[childID];
+						copy.parents.Empty();
+						copy.parents.Add(chunkID);
+						chunks.Add(copy);
+						childID = chunks.Num()-1;
+					}
+
+					float rot = (i-1)*50.0;
+
+					if (chunks[childID].lower > 0)
+						chunks[childID].transform.SetRotation(FQuat(FRotator(rot, 0, 0)));
+					else
+						chunks[childID].transform.SetRotation(FQuat(FRotator(-rot, 0, 0)));
+
+					recursiveTransformChunks(next, childID, chunks, i == 0);
+				}
+			}
+		}
+	}
+	if (state == 1) { // straight
+		for (int childID: currentchunk.children) {
+			if (!primary) {
+				Chunk copy = chunks[childID];
+				copy.parents.Empty();
+				copy.parents.Add(chunkID);
+				chunks.Add(copy);
+				childID = chunks.Num()-1;
+			}
+			recursiveTransformChunks(1, childID, chunks, primary);
+		}
+	}
+	if (state == 2) { // curve down
+		for (int childID: currentchunk.children) {
+			if (!primary) {
+				Chunk copy = chunks[childID];
+				copy.parents.Empty();
+				copy.parents.Add(chunkID);
+				chunks.Add(copy);
+				childID = chunks.Num()-1;
+			}
+
+			if (chunks[childID].lower > 0)
+				chunks[childID].transform.SetRotation(FQuat(FRotator(-20, 0, 0)));
+			else
+				chunks[childID].transform.SetRotation(FQuat(FRotator(20, 0, 0)));
+
+			recursiveTransformChunks(2, childID, chunks, primary);
+		}
+	}
+	if (state == 3) { // curve up
+		for (int childID: currentchunk.children) {
+			if (!primary) {
+				Chunk copy = chunks[childID];
+				copy.parents.Empty();
+				copy.parents.Add(chunkID);
+				chunks.Add(copy);
+				childID = chunks.Num()-1;
+			}
+
+			if (chunks[childID].lower > 0)
+				chunks[childID].transform.SetRotation(FQuat(FRotator(20, 0, 0)));
+			else
+				chunks[childID].transform.SetRotation(FQuat(FRotator(-20, 0, 0)));
+
+			recursiveTransformChunks(3, childID, chunks, primary);
 		}
 	}
 }
@@ -426,23 +570,41 @@ TArray<FPartAndTransform> UComponentChoiceFunctions::createShip(TArray<FTileCoor
 	TArray<FPartAndTransform> shipParts;
 
 	for (Chunk& chunk: chunks) {
-		int a = FMath::RandRange(-10, 10);
-		chunk.transform.AddToTranslation({0,0,10.0f*a});
+		if (chunk.parents.Num() > 0) {
+			if (chunk.lower > 0)
+				chunk.attachX = chunk.lower-1;
+			else
+				chunk.attachX = chunk.upper+1;
+		}
+	}
 
-		/*
-		if (chunk.lower <= 0 && chunk.upper >= 0)
-			continue;
-		if (chunk.lower > 0)
-			chunk.transform.SetLocation({173.2, 0, 0});
-		if (chunk.higher < 0)
-			chunk.transform.SetLocation({-173.2, 0, 0});
-		*/
-		//chunk.transform.SetRotation(FQuat(FRotator(10, 0, 0)));
+	TArray<int> rootChunks;
+	for (int i = 0; i < chunks.Num(); i++) {
+		Chunk& chunk = chunks[i];
+		if (chunk.parents.Num() > 0) {
+			// placement compared to parent chunk
+			int offset = chunk.attachX-chunks[chunk.parents.Array()[0]].attachX;
+			chunk.transform.AddToTranslation(fromHexCoordinate({offset, 0}));
+
+			// fill children
+			chunks[chunk.parents.Array()[0]].children.Add(i);
+
+			/*
+			if (chunk.lower > 0)
+				chunk.transform.SetRotation(FQuat(FRotator(-20, 0, 0)));
+			else
+				chunk.transform.SetRotation(FQuat(FRotator(20, 0, 0)));
+			*/
+		} else {
+			rootChunks.Add(i);
+		}
+	}
+
+	for (int chunkID: rootChunks) {
+		recursiveTransformChunks(0, chunkID, chunks);
 	}
 	
 	for (Chunk& chunk: chunks) {
-		int a = FMath::RandRange(0, 10);
-
 		FTransform totalTransform;
 		Chunk* parent = &chunk;
 
@@ -460,13 +622,11 @@ TArray<FPartAndTransform> UComponentChoiceFunctions::createShip(TArray<FTileCoor
 			FPartData& partData = data[placedParts[partID].first];
 			FTileCoordinate& centre = placedParts[partID].second;
 
-			FTransform transform(fromHexCoordinate(centre));
-			//FTransform transform(fromHexCoordinate(centre-FTileCoordinate(chunk.lower,0)));
+			FTransform transform(fromHexCoordinate(centre-FTileCoordinate(chunk.attachX, 0)));
 
 			if (placedParts[partID].first >= N)
 				transform.MultiplyScale3D({-1,1,1});
 
-			//transform.AddToTranslation({0,0,-20.0f*a});
 
 			shipParts.Add({transform*totalTransform, parts[placedParts[partID].first]});
 
